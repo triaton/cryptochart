@@ -1,0 +1,23 @@
+{
+  "name": "coin",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "apollo-boost": "^0.4.9",
+    "apollo-cache-inmemory": "^1.6.6",
+    "apollo-link-http": "^1.5.17",
+    "graphql": "^16.0.1",
+    "graphql-tag": "^2.12.6",
+    "pureimage": "^0.3.6"
+  },
+  "devDependencies": {
+    "cross-fetch": "^3.1.4"
+  }
+}
