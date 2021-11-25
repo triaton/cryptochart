@@ -6,19 +6,9 @@ const createHttpLink = require('apollo-link-http').createHttpLink;
 const InMemoryCache = require('apollo-cache-inmemory').InMemoryCache;
 const PImage = require('pureimage');
 
-const SHOW_AXIS = true;
-
-const width = 900;
-const height = 500;
-const tickCount = 100;
-const xValueCount = 10;
-const yValueCount = 15;
-const padding = SHOW_AXIS ? 30 : 20;
-const xrPadding = SHOW_AXIS ? 100 : 20;
-const yFont = 12;
-const xFont = 14;
-
-const API_URI = 'https://graphql.bitquery.io/'
+const API_URI = 'https://graphql.bitquery.io/';
+const DATA_DIR = process.env.DATA_DIR || '/mnt/e/uploads/';
+const ASSETS_DIR = process.env.ASSETS_DIR || './';
 
 function pad(num, size = 2) {
   var s = "000000000" + num;
@@ -38,7 +28,13 @@ const since = () => {
   return formatFull(now);
 }
 
-const query = gql`{
+const client = new ApolloClient({
+  link: createHttpLink({uri: API_URI, fetch}),
+  cache: new InMemoryCache()
+});
+
+function fetchPrices() {
+  const query = gql`{
   ethereum(network: bsc) {
     dexTrades(options: {limit: 300, asc: "timeInterval.minute"}, date: {since: "${since()}"}, exchangeName: {in: ["Pancake", "Pancake v2"]}, baseCurrency: {is: "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c"}, quoteCurrency: {is: "0xe9e7cea3dedca5984780bafc599bd69add087d56"}) {
       timeInterval {
@@ -56,16 +52,20 @@ const query = gql`{
   }
 }
 `
-const client = new ApolloClient({
-  link: createHttpLink({uri: API_URI, fetch}),
-  cache: new InMemoryCache()
-});
-
-function getData() {
   return client.query({ query });
 }
 
-function drawChart(data) {
+function drawChart(data, showAxis) {
+  const width = 900;
+  const height = 500;
+  const tickCount = 100;
+  const xValueCount = 10;
+  const yValueCount = 15;
+  const padding = showAxis ? 30 : 20;
+  const xrPadding = showAxis ? 100 : 20;
+  const yFont = 12;
+  const xFont = 14;
+
   if (data.length > tickCount) {
     data = data.slice(data.length - tickCount, data.length);
   }
@@ -115,71 +115,77 @@ function drawChart(data) {
     return value.toFixed(6);
   });
 
-  const font = PImage.registerFont('./verdana.ttf', 'Verdana');
-  font.load(() => {
-    const image = PImage.make(width, height);
-    const context = image.getContext('2d');
+  const font = PImage.registerFont(`${ASSETS_DIR}verdana.ttf`, 'Verdana');
+  return new Promise((resolve, reject) => {
+    font.load(() => {
+      const image = PImage.make(width, height);
+      const context = image.getContext('2d');
 
-    const yDiff = Math.abs(allMax - allMin);
+      const yDiff = Math.abs(allMax - allMin);
 
-    const xx = (width - padding * 2 - xrPadding) / count;
-    const yx = (height - padding * 2) / yDiff;
+      const xx = (width - padding * 2 - xrPadding) / count;
+      const yx = (height - padding * 2) / yDiff;
 
-    // fill background
-    context.fillStyle = 'rgb(0, 0, 0)';
-    context.fillRect(0, 0, width, height);
+      // fill background
+      context.fillStyle = 'rgb(0, 0, 0)';
+      context.fillRect(0, 0, width, height);
 
-    // set line style
-    context.strokeStyle = 'rgb(255, 255, 255)';
-    context.lineWidth = Math.min(10, xx - 1);
+      // set line style
+      context.strokeStyle = 'rgb(255, 255, 255)';
+      context.lineWidth = Math.min(10, xx - 1);
 
-    // draw prices
-    for (let i = 0; i < count; i++) {
-      const x = padding + xx * i;
-      const sy = height - padding - (prices[i].open - allMin) * yx;
-      const ey = height - padding - (prices[i].close - allMin) * yx;
-      if (prices[i].up) {
-        context.strokeStyle = '#26A69A';
-      } else {
-        context.strokeStyle = '#EF5350';
+      // draw prices
+      for (let i = 0; i < count; i++) {
+        const x = padding + xx * i;
+        const sy = height - padding - (prices[i].open - allMin) * yx;
+        const ey = height - padding - (prices[i].close - allMin) * yx;
+        if (prices[i].up) {
+          context.strokeStyle = '#26A69A';
+        } else {
+          context.strokeStyle = '#EF5350';
+        }
+        context.beginPath();
+        context.moveTo(x, sy);
+        context.lineTo(x, ey);
+        context.stroke();
       }
-      context.beginPath();
-      context.moveTo(x, sy);
-      context.lineTo(x, ey);
-      context.stroke();
-    }
-    if (SHOW_AXIS) {
-      // draw x-axis values
-      const xw = (width - padding - xrPadding) / xValueCount;
-      context.fillStyle = 'white';
-      context.font = `${xFont}pt Verdana`;
-      for (let i = 0; i < xValueCount; i++) {
-        context.fillText(times[i], i * xw + padding, height - padding / 2 + 5);
+      if (showAxis) {
+        // draw x-axis values
+        const xw = (width - padding - xrPadding) / xValueCount;
+        context.fillStyle = 'white';
+        context.font = `${xFont}pt Verdana`;
+        for (let i = 0; i < xValueCount; i++) {
+          context.fillText(times[i], i * xw + padding, height - padding / 2 + 5);
+        }
+
+        // draw y-axis values
+        context.font = `${yFont}pt Verdana`;
+        const yw = (height - padding * 2) / yValueCount;
+        for (let i = 0; i < yValueCount; i++) {
+          context.fillText(values[i], width - xrPadding, height - padding - i * yw - yFont);
+        }
       }
 
-      // draw y-axis values
-      context.font = `${yFont}pt Verdana`;
-      const yw = (height - padding * 2) / yValueCount;
-      for (let i = 0; i < yValueCount; i++) {
-        context.fillText(values[i], width - xrPadding, height - padding - i * yw - yFont);
-      }
-    }
-
-    // write to an image file
-    PImage.encodePNGToStream(image, fs.createWriteStream('/mnt/f/out.png'))
-      .then(() => {
-        console.log('file created.');
-      })
+      // write to an image file
+      const timestamp = new Date().getTime();
+      const filePath = `${DATA_DIR}${timestamp}.png`;
+      PImage.encodePNGToStream(image, fs.createWriteStream(filePath))
+        .then(() => {
+          resolve(filePath);
+        })
+        .catch(e => {
+          reject(e);
+        })
+    })
   })
 }
 
-function run() {
-  getData().then(res => {
-    const data = res.data.ethereum.dexTrades;
-    drawChart(data);
-  }).catch(e => {
-    console.log('fetch error = ', e);
-  })
+async function generateImage(showAxis = false) {
+  const res = await fetchPrices();
+  const data = res.data.ethereum.dexTrades;
+  return drawChart(data, showAxis);
 }
 
-run();
+generateImage(true).then(path => {
+  console.log('path = ', path);
+})
